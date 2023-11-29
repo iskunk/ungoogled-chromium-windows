@@ -1,0 +1,71 @@
+name: "Build image: chromium-win-cross"
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        type: boolean
+        description: "Upload to registry"
+        default: false
+
+jobs:
+
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+      - name: Clone msvc-wine Git repository
+        uses: actions/checkout@v4
+        with:
+          repository: mstorsjo/msvc-wine
+          path: cross-build/msvc-wine
+      - name: Cache MSVC download files
+        uses: actions/cache@v4
+        with:
+          # TODO: rename to "msvc-download"
+          key: msvc-cache
+          path: cross-build/msvc-cache
+      - name: Tweak Dpkg config to elide progress indicators
+        run: echo 'Dpkg::Use-Pty "false";' | sudo tee /etc/apt/apt.conf.d/55no-use-pty
+      - name: Install packages required for extracting the MSVC files
+        run: sudo apt-get -y --no-install-recommends install msitools
+      - name: Log in to GitHub Container Registry
+        run: echo ${{secrets.GHCR_TOKEN}} | docker login ghcr.io --username ${{github.actor}} --password-stdin
+      - name: Build main container image
+        run: |
+          cd cross-build && make build-image \
+            IMAGE_SOURCE=https://github.com/${{github.repository}} \
+            MSVC_ACCEPT_LICENSE=--accept-license
+      - name: Get date-based version tag for image
+        id: version
+        if: inputs.upload
+        run: |
+          vtag=$(date '+%Y%m%d')
+          echo "Image version tag: $vtag"
+          echo "tag=$vtag" >> $GITHUB_OUTPUT
+      - name: Upload container image to registry
+        if: inputs.upload
+        run: |
+          remote_name=ghcr.io/${{github.repository_owner}}/chromium-win-cross
+          docker tag chromium-win-cross $remote_name:${{steps.version.outputs.tag}}
+          docker tag chromium-win-cross $remote_name:latest
+          docker push $remote_name:${{steps.version.outputs.tag}}
+          docker push $remote_name:latest
+          docker logout ghcr.io
+      - name: Prepare image metadata artifact files
+        run: |
+          mkdir artifact
+          cp -p cross-build/MD5SUMS.rootfs artifact/
+          cp -p cross-build/winsysroot/.vsdownload/*.manifest.xz artifact/
+          cp -p cross-build/winsysroot/.vsdownload/MD5SUMS.cache.xz artifact/MD5SUMS.msvc-cache.xz
+          xz -d artifact/*.xz
+          docker container run --rm chromium-win-cross dpkg-query --show > artifact/dpkg-packages.txt
+      - name: Archive image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info
+          compression-level: 9
+          path: artifact/
+
+# EOF

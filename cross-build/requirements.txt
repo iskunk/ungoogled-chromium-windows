@@ -1,0 +1,20 @@
+# Compiler suite
+clang-17
+clang-format-17
+clang-tools-17
+lld-17
+llvm-17
+
+# NOTE: The Rust toolchain is installed via rustup
+
+# Needed for Linux-side tooling
+libexpat1-dev
+libglib2.0-dev
+libkrb5-dev
+libnss3-dev
+
+# Build tools
+generate-ninja
+gperf
+ninja-build
+nodejs

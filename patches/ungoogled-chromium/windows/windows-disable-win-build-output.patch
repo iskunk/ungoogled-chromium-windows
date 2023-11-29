@@ -4,15 +4,16 @@
 
 --- a/build/toolchain/win/midl.py
 +++ b/build/toolchain/win/midl.py
-@@ -6,6 +6,7 @@ from __future__ import division
+@@ -371,6 +371,8 @@ def main(arch, gendir, outdir, dynamic_g
+       # instruct the developer to copy that file under
+       # third_party\win_build_output\midl.
+       open(file_path, 'wb').close()
++    elif os.path.getsize(file_path) == 0:
++      source_exists = False
+     shutil.copy(file_path, outdir)
  
- import array
- import difflib
-+import distutils.file_util
- import filecmp
- import io
- import operator
-@@ -444,41 +445,13 @@ def main(arch, gendir, outdir, dynamic_g
+   if dynamic_guids != 'none':
+@@ -444,40 +446,15 @@ def main(arch, gendir, outdir, dynamic_g
    if returncode != 0:
      return returncode
  
@@ -51,10 +52,11 @@
 -    print('To rebaseline:')
 -    print(r'  copy /y %s\* %s' % (midl_output_dir, source))
 -    return 1
--
-+      distutils.file_util.copy_file(os.path.join(midl_output_dir, f), outdir, preserve_times=False)
-   return 0
++      shutil.copy(os.path.join(midl_output_dir, f), outdir)
++
++  shutil.rmtree(midl_output_dir)
  
+   return 0
  
 --- a/build/win/message_compiler.py
 +++ b/build/win/message_compiler.py

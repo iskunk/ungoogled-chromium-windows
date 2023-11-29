@@ -1,0 +1,16 @@
+# Dockerfile.msvc
+
+# This adds the MSVC toolchain to the base image. Because MSVC is
+# proprietary software, the resulting image cannot be redistributed.
+
+#FROM chromium-win-cross-base
+FROM ghcr.io/iskunk/chromium-win-cross-base:latest
+
+LABEL org.opencontainers.image.description="Chromium browser cross-build environment (Linux to Microsoft Windows)"
+
+ADD winsysroot /opt/microsoft
+
+ENV GYP_MSVS_OVERRIDE_PATH=/opt/microsoft \
+    WINDOWSSDKDIR="/opt/microsoft/Windows Kits/10"
+
+# end Dockerfile.msvc
