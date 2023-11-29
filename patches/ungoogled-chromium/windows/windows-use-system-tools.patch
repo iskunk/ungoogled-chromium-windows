@@ -1,0 +1,83 @@
+System tools to use (instead of Google-provided binaries) when
+cross-compiling on Linux or macOS
+
+--- a/build/toolchain/win/midl.gni
++++ b/build/toolchain/win/midl.gni
+@@ -161,6 +161,14 @@ template("midl") {
+       assert(false, "Need environment for this arch")
+     }
+ 
++    if (host_os == "win") {
++      clang = rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang-cl.exe",
++                          root_build_dir)
++    } else {
++      import("//build/config/clang/clang.gni")
++      clang = "$clang_base_path/bin/clang-cl"
++    }
++
+     args = [
+       win_tool_arch,
+       generated_dir,
+@@ -171,8 +179,7 @@ template("midl") {
+       dlldata_file,
+       interface_identifier_file,
+       proxy_file,
+-      rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang-cl.exe",
+-                  root_build_dir),
++      clang,
+       "{{source}}",
+       "/char",
+       "signed",
+--- a/build/toolchain/win/rc/rc.py
++++ b/build/toolchain/win/rc/rc.py
+@@ -125,6 +125,9 @@ def Preprocess(rc_file_data, flags):
+   """Runs the input file through the preprocessor."""
+   clang = os.path.join(SRC_DIR, 'third_party', 'llvm-build',
+                        'Release+Asserts', 'bin', 'clang-cl')
++  if sys.platform == 'linux':
++    # Use upstream clang-cl
++    clang = '/opt/llvm/bin/clang-cl'
+   # Let preprocessor write to a temp file so that it doesn't interfere
+   # with /showIncludes output on stdout.
+   if sys.platform == 'win32':
+@@ -164,6 +167,7 @@ def Preprocess(rc_file_data, flags):
+ def RunRc(preprocessed_output, is_utf8, flags):
+   if sys.platform.startswith('linux'):
+     rc = os.path.join(THIS_DIR, 'linux64', 'rc')
++    rc = 'rc'  # find in PATH
+   elif sys.platform == 'darwin':
+     rc = os.path.join(THIS_DIR, 'mac', 'rc')
+   elif sys.platform == 'win32':
+--- a/chrome/credential_provider/build/make_setup.py
++++ b/chrome/credential_provider/build/make_setup.py
+@@ -59,6 +59,8 @@ def GetLZMAExec(src_path):
+     The executable command to run the 7zip compressor.
+   """
+   executable = '7zr'
++  if sys.platform != 'win32':
++    return executable  # find in PATH
+   if sys.platform == 'win32':
+     executable += '.exe'
+ 
+--- a/third_party/node/node.py
++++ b/third_party/node/node.py
+@@ -12,6 +12,8 @@ import os
+ 
+ 
+ def GetBinaryPath():
++  if sys.platform != 'win32':
++    return '/opt/node/bin/node'
+   if platform.machine() == 'arm64':
+     darwin_path = 'mac_arm64'
+     darwin_name = 'node-darwin-arm64'
+--- a/third_party/node/node.gni
++++ b/third_party/node/node.gni
+@@ -23,7 +23,7 @@ template("node") {
+     # When use_remoteexec=true, node actions may run on remote
+     # Linux worker. So it should include linux node binary in inputs.
+     if (is_linux || is_chromeos || use_remoteexec) {
+-      inputs += [ "//third_party/node/linux/node-linux-x64/bin/node" ]
++      inputs += [ "/opt/node/bin/node" ]
+     }
+     if (is_win && host_os == "win") {
+       inputs += [ "//third_party/node/win/node.exe" ]

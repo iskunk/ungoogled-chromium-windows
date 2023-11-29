@@ -1,0 +1,249 @@
+---
+name: Cross-build ungoogled-chromium
+
+on:
+  workflow_dispatch:
+    inputs:
+      container_image:
+        description: Container image for build
+        default: chromium-win-cross:latest
+      target-cpu:
+        description: Target CPU
+        type: choice
+        options: [x64, x86, arm64]
+        default: x64
+      debug:
+        description: Enable debugging
+        type: boolean
+        default: false
+
+env:
+  ZSTD_NBTHREADS: 0
+
+jobs:
+
+  stage-1:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/${{github.repository_owner}}/${{inputs.container_image}}
+      options: -v /:/HOST
+    outputs:
+      chromium-version: ${{steps.chromium.outputs.version}}
+    steps:
+
+      - name: Free up disk space
+        run: cd /HOST && sudo /usr/local/sbin/gh-unburden
+
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 50
+          fetch-tags: true
+
+      - name: Get Chromium version info
+        id: chromium
+        run: |
+          version=$(cat ungoogled-chromium/chromium_version.txt)
+          echo "Chromium version: $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Restore Chromium source tarball download cache
+        id: restore-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: chromium-source-${{steps.chromium.outputs.version}}
+          path: cross-build/build/download_cache
+
+      - name: Download and/or verify Chromium source tarball
+        run: |
+          cache=cross-build/build/download_cache
+          mkdir -p $cache
+          ungoogled-chromium/utils/downloads.py retrieve \
+            --ini ungoogled-chromium/downloads.ini \
+            --cache $cache \
+            --hide-progress-bar
+          ls -l $cache
+
+      - name: Save Chromium source tarball download cache
+        if: ${{!steps.restore-cache.outputs.cache-hit}}
+        uses: actions/cache/save@v4
+        with:
+          key: chromium-source-${{steps.chromium.outputs.version}}
+          path: cross-build/build/download_cache
+
+      - name: Prepare the build
+        run: cd cross-build && ./build.sh --ci --${{inputs.target-cpu}} ${{inputs.debug && '--debug' || ''}}
+
+      - name: Prepare GHCI build strategy
+        run: |
+          cd cross-build/build/src/out/Default*
+          targets=$(cat build.targets)
+          $GITHUB_WORKSPACE/skunk-tmp/ghci-strategy.sh 8 $targets
+
+      - name: Delete the download cache
+        run: rm -r cross-build/build/download_cache
+
+      - name: Stage 1 build (${{inputs.target-cpu}})
+        run: |
+          cd cross-build/build/src
+          ninja -C out/Default* -f ghci-stage1.ninja ghci-stage1
+
+      - name: Tar up the workspace
+        # The "touch" prevents a "tar: .: file changed as we read it" error
+        run: |
+          touch  stage1.tar.zstd
+          tar cf stage1.tar.zstd --zstd --exclude=stage1.tar.zstd .
+          ls -lh stage1.tar.zstd
+
+      - name: Save the workspace for stage 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage1
+          compression-level: 0
+          path: stage1.tar.zstd
+          if-no-files-found: error
+          retention-days: 1
+
+  stage-2:
+    needs: [stage-1]
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        part: [part1, part2, part3, part4, part5, part6, part7, part8]
+    container:
+      image: ghcr.io/${{github.repository_owner}}/${{inputs.container_image}}
+      options: -v /:/HOST
+    env:
+      PART: ${{matrix.part}}
+    steps:
+
+      - name: Free up disk space
+        run: cd /HOST && sudo /usr/local/sbin/gh-unburden
+
+      - name: Download workspace tarball from stage 1
+        uses: actions/download-artifact@v4
+        with:
+          name: stage1
+
+      # The find/truncate gets rid of the bulk of redundant files under
+      # obj/, while keeping them as placeholders to avoid recompilation
+      - name: Unpack workspace tarball
+        run: |
+          tar xf stage1.tar.zstd --zstd
+          rm stage1.tar.zstd
+          cd cross-build/build/src/out/Default*
+          find obj */obj -type f -exec truncate -s 0 {} +
+
+      - name: Stage 2 build (${{matrix.part}}, ${{inputs.target-cpu}})
+        run: |
+          cd cross-build/build/src
+          ninja -C out/Default* -f ghci-stage2.ninja $PART
+
+      - name: Tar up the partial build tree
+        run: |
+          tar cf stage2-$PART.tar.zstd --zstd \
+            cross-build/build/src/out/Default*/obj \
+            cross-build/build/src/out/Default*/*/obj
+          ls -lh stage2-$PART.tar.zstd
+
+      - name: Save the partial tree for stage 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage2-${{matrix.part}}
+          compression-level: 0
+          path: stage2-${{matrix.part}}.tar.zstd
+          if-no-files-found: error
+          retention-days: 1
+
+  stage-3:
+    needs: [stage-1, stage-2]
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/${{github.repository_owner}}/${{inputs.container_image}}
+      options: -v /:/HOST
+    steps:
+
+      - name: Free up disk space
+        run: cd /HOST && sudo /usr/local/sbin/gh-unburden
+
+      - name: Download the workspace and partial build tree tarballs
+        uses: actions/download-artifact@v4
+
+      - name: Unpack the tarballs
+        run: |
+          for tarball in \
+            stage1/stage1.tar.zstd \
+            stage2-part*/stage2-part*.tar.zstd
+          do
+            echo "Unpacking $tarball ..."
+            tar xf $tarball --zstd --skip-old-files
+            rm $tarball
+          done
+          rmdir stage1 stage2-part*
+
+      - name: Stage 3 build (${{inputs.target-cpu}})
+        run: cd cross-build && ./build.sh --${{inputs.target-cpu}} ${{inputs.debug && '--debug' || ''}}
+
+      - name: Archive build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{inputs.target-cpu}}
+          compression-level: 0
+          path: cross-build/build/ungoogled-chromium_*
+          if-no-files-found: error
+
+      - name: Archive reproducibility info
+        uses: actions/upload-artifact@v4
+        with:
+          name: reproducible-build-info
+          compression-level: 9
+          path: cross-build/build/MD5SUMS*.repro
+          if-no-files-found: error
+
+      - name: Generate build summary
+        env:
+          CPU: ${{inputs.target-cpu}}
+          VERSION: ${{needs.stage-1.outputs.chromium-version}}
+        run: |
+          cd cross-build/build
+          (echo "## Built ungoogled-chromium $VERSION for Windows/$CPU"
+           echo '```'
+           echo 'Package files:'
+           ls -l ungoogled-chromium_*
+           echo
+           echo 'SHA-256 sums:'
+           sha256sum ungoogled-chromium_*
+           echo '```'
+          ) >> $GITHUB_STEP_SUMMARY
+
+  cleanup:
+    if: always()
+    needs: [stage-3]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Delete temporary artifacts
+        env:
+          GH_TOKEN: ${{github.token}}
+        run: |
+          gh_api_call()
+          {
+            gh api $2 $3 \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "/repos/$GITHUB_REPOSITORY/actions/$1"
+          }
+          gh_api_call "runs/$GITHUB_RUN_ID/artifacts" \
+          | jq -r '.artifacts[] | (.id|tostring)+"\t"+.name' \
+          | grep stage \
+          > artifacts.txt || true
+          echo "Found $(wc -l < artifacts.txt) artifact(s) to delete."
+          while read id name
+          do
+            echo "Deleting artifact \"$name\" (id=$id)"
+            gh_api_call "artifacts/$id" --method DELETE
+          done < artifacts.txt
+
+# EOF

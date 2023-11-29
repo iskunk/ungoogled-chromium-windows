@@ -1,28 +1,48 @@
 # Fix building GN on Windows
 # Author: shiromichi on GitHub
 
+(also fix a Python syntax warning)
+
 --- a/tools/gn/bootstrap/bootstrap.py
 +++ b/tools/gn/bootstrap/bootstrap.py
-@@ -69,7 +69,7 @@ def main(argv):
+@@ -29,6 +29,8 @@ BOOTSTRAP_DIR = os.path.dirname(os.path.
+ GN_ROOT = os.path.dirname(BOOTSTRAP_DIR)
+ SRC_ROOT = os.path.dirname(os.path.dirname(GN_ROOT))
+ 
++GN_EXE = 'gn.exe' if sys.platform == 'win32' else 'gn'
++
+ 
+ def main(argv):
+   parser = optparse.OptionParser(description=sys.modules[__name__].__doc__)
+@@ -69,7 +71,7 @@ def main(argv):
    else:
      build_rel = os.path.join('out', 'Release')
    out_dir = os.path.join(SRC_ROOT, build_rel)
 -  gn_path = options.output or os.path.join(out_dir, 'gn')
-+  gn_path = options.output or os.path.join(out_dir, 'gn.exe')
++  gn_path = options.output or os.path.join(out_dir, GN_EXE)
    gn_build_dir = os.path.join(out_dir, 'gn_build')
    ninja_binary = os.environ.get('NINJA', 'ninja')
  
-@@ -122,11 +122,11 @@ def main(argv):
+@@ -102,7 +104,7 @@ def main(argv):
+     append_to_env('LDFLAGS', [
+         '-nodefaultlibs', 'libc++.gn.so',
+         '-lpthread', '-lc', '-lm',
+-        '-Wl,-rpath="\$$ORIGIN/."', '-Wl,-rpath-link=.'
++        '-Wl,-rpath=$ORIGIN/.', '-Wl,-rpath-link=.'
+     ])
+     append_to_env('CXXFLAGS', [
+         '-nostdinc++', '-isystem../../../buildtools/third_party/libc++',
+@@ -122,11 +124,11 @@ def main(argv):
  
    shutil.copy2(
        os.path.join(BOOTSTRAP_DIR, 'last_commit_position.h'), gn_build_dir)
 -  cmd = [ninja_binary, '-C', gn_build_dir, 'gn']
-+  cmd = [ninja_binary, '-C', gn_build_dir, 'gn.exe']
++  cmd = [ninja_binary, '-C', gn_build_dir, GN_EXE]
    if options.jobs:
      cmd += ['-j', str(options.jobs)]
    subprocess.check_call(cmd)
 -  shutil.copy2(os.path.join(gn_build_dir, 'gn'), gn_path)
-+  shutil.copy2(os.path.join(gn_build_dir, 'gn.exe'), gn_path)
++  shutil.copy2(os.path.join(gn_build_dir, GN_EXE), gn_path)
  
    if not options.skip_generate_buildfiles:
      gn_gen_args = options.gn_gen_args or ''

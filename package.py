@@ -38,7 +38,7 @@ def _get_target_cpu(build_outputs):
     if not _cached_target_cpu:
         with open(build_outputs / 'args.gn', 'r') as f:
             args_gn_text = f.read()
-            for cpu in ('x64', 'x86', 'arm64'):
+            for cpu in ('arm', 'arm64', 'x64', 'x86'):
                 if f'target_cpu="{cpu}"' in args_gn_text:
                     _cached_target_cpu = cpu
                     break
@@ -50,6 +50,13 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        '--build-outputs',
+        metavar='DIR',
+        type=Path,
+        default=Path('build/src/out/Default'),
+        help=('Top-level directory of build tree. '
+              'Default: %(default)s'))
+    parser.add_argument(
         '--cpu-arch',
         metavar='ARCH',
         default=platform.architecture()[0],
@@ -59,12 +66,10 @@ def main():
               'Default (from platform.architecture()): %(default)s'))
     args = parser.parse_args()
 
-    build_outputs = Path('build/src/out/Default')
-
-    shutil.copyfile('build/src/out/Default/mini_installer.exe',
+    shutil.copyfile(args.build_outputs / 'mini_installer.exe',
         'build/ungoogled-chromium_{}-{}.{}_installer_{}.exe'.format(
             get_chromium_version(), _get_release_revision(),
-            _get_packaging_revision(), _get_target_cpu(build_outputs)))
+            _get_packaging_revision(), _get_target_cpu(args.build_outputs)))
 
     timestamp = None
     try:
@@ -75,7 +80,7 @@ def main():
 
     output = Path('build/ungoogled-chromium_{}-{}.{}_windows_{}.zip'.format(
         get_chromium_version(), _get_release_revision(),
-        _get_packaging_revision(), _get_target_cpu(build_outputs)))
+        _get_packaging_revision(), _get_target_cpu(args.build_outputs)))
 
     excluded_files = set([
         Path('mini_installer.exe'),
@@ -85,9 +90,9 @@ def main():
     ])
     files_generator = filescfg.filescfg_generator(
         Path('build/src/chrome/tools/build/win/FILES.cfg'),
-        build_outputs, args.cpu_arch, excluded_files)
+        args.build_outputs, args.cpu_arch, excluded_files)
     filescfg.create_archive(
-        files_generator, tuple(), build_outputs, output, timestamp)
+        files_generator, tuple(), args.build_outputs, output, timestamp)
 
 if __name__ == '__main__':
     main()

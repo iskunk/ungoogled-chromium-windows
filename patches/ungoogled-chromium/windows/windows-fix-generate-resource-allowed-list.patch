@@ -2,7 +2,17 @@
 
 --- a/tools/resources/generate_resource_allowlist.py
 +++ b/tools/resources/generate_resource_allowlist.py
-@@ -61,7 +61,7 @@ def GetResourceAllowlistPDB(path):
+@@ -26,6 +26,9 @@ import ar
+ llvm_bindir = os.path.join(os.path.dirname(sys.argv[0]), '..', '..',
+                            'third_party', 'llvm-build', 'Release+Asserts',
+                            'bin')
++if sys.platform == 'linux':
++  # Use upstream LLVM
++  llvm_bindir = '/opt/llvm/bin'
+ 
+ 
+ def ExtractAllowlistFromFile(path, resource_ids):
+@@ -61,7 +64,7 @@ def GetResourceAllowlistPDB(path):
    pdbutil = subprocess.Popen(
        [os.path.join(llvm_bindir, 'llvm-pdbutil'), 'dump', '-publics', path],
        stdout=subprocess.PIPE)
@@ -11,7 +21,7 @@
    for line in pdbutil.stdout:
      line = line.decode('utf8')
      # Read a line of the form
-@@ -75,31 +75,35 @@ def GetResourceAllowlistPDB(path):
+@@ -75,31 +78,40 @@ def GetResourceAllowlistPDB(path):
      # Example: __profd_??$AllowlistedResource@$0BGPH@@ui@@YAXXZ
      # C++ mangled names are supposed to begin with `?`, so check for that.
      if 'AllowlistedResource' in sym_name and sym_name.startswith('?'):
@@ -25,6 +35,11 @@
 -                             stdin=subprocess.PIPE,
 -                             stdout=subprocess.PIPE)
 -  stdout, _ = undname.communicate(names.encode('utf8'))
++  if sys.platform == 'win32':
++    undname_exe = 'undname'
++  else:
++    undname_exe = os.path.join(llvm_bindir, 'llvm-undname')
++
    resource_ids = set()
 -  for line in stdout.split(b'\n'):
 -    line = line.decode('utf8')
@@ -42,7 +57,7 @@
 -  if exit_code != 0:
 -    raise Exception('llvm-undname exited with exit code %d' % exit_code)
 +  for name in names:
-+    undname = subprocess.Popen(['undname', name],
++    undname = subprocess.Popen([undname_exe, name],
 +                               stdout=subprocess.PIPE)
 +    found = False
 +    for line in undname.stdout:

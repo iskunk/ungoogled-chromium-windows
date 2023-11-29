@@ -1,0 +1,93 @@
+When cross-compiling on Linux, run MIDL via Wine. Unless we use the
+pre-generated files provided by Google, we have no better alternative.
+
+Note that having MIDL invoke the Linux host's clang-cl via /cpp_cmd does
+not work. The latter cannot handle paths with backslashes, and even if it
+succeeds (e.g. using a wrapper script), MIDL thinks the invocation failed
+for some reason. So we rely on CL to handle the preprocessing instead.
+
+--- a/build/toolchain/win/midl.py
++++ b/build/toolchain/win/midl.py
+@@ -254,9 +254,39 @@ def run_midl(args, env_dict):
+   midl_output_dir = tempfile.mkdtemp()
+   delete_midl_output_dir = True
+ 
++  midl_output_dir_native = midl_output_dir
++  if sys.platform == 'linux':
++    # Prepare to run MIDL via Wine
++    import glob
++    sdk_dir = os.environ['WINDOWSSDKDIR']
++    midl_exe = glob.glob(f'{sdk_dir}/bin/*/x64/midl.exe')[0]
++    assert args[0] == 'midl'
++    args = ['wine', midl_exe] + args[1:]
++    # MIDL can't seem to invoke the Linux clang-cl correctly, so...
++    sysroot_dir = os.path.normpath(f'{sdk_dir}/../..')
++    cl_exe = glob.glob(f'{sysroot_dir}/VC/Tools/MSVC/*/bin/HostX64/x64/cl.exe')[0]
++    x = args.index('/cpp_cmd')
++    args[x + 1] = cl_exe
++    assert args[x + 2] == '/cpp_opt'
++    args[x + 3] = args[x + 3].replace('-Wno-nonportable-include-path', '')
++    # MIDL bugs out if it sees an absolute POSIX path with forward slashes
++    # in $INCLUDE (e.g. "/some/random/dir"), because it will interpret that
++    # as an option flag. It will happily accept the path if prefixed with a
++    # drive letter, however. Use "z:", as Wine maps that to "/" by default.
++    incs = env_dict['INCLUDE']
++    incs_new = ';'.join(['z:' + dir for dir in incs.split(';')])
++    env_dict['INCLUDE'] = incs_new
++    # Same issue here
++    midl_output_dir_native = 'z:' + midl_output_dir
++    # Set some Wine env vars to reduce noise
++    env_dict['WINEDEBUG'] = '-all'
++    env_dict['WINEDLLOVERRIDES'] = 'explorer.exe='
++    # Quash "Fontconfig error: No writable cache directories" messages
++    env_dict['XDG_CACHE_HOME'] = '/tmp'
++
+   try:
+-    popen = subprocess.Popen(args + ['/out', midl_output_dir],
+-                             shell=True,
++    popen = subprocess.Popen(args + ['/out', midl_output_dir_native],
++                             shell=(sys.platform == 'win32'),
+                              universal_newlines=True,
+                              env=env_dict,
+                              stdout=subprocess.PIPE,
+@@ -328,9 +358,6 @@ def main(arch, gendir, outdir, dynamic_g
+   source_exists = True
+   if not os.path.isdir(source):
+     source_exists = False
+-    if sys.platform != 'win32':
+-      print('Directory %s needs to be populated from Windows first' % source)
+-      return 1
+ 
+     # This is a brand new IDL file that does not have outputs under
+     # third_party\win_build_output\midl. We create an empty directory for now.
+@@ -360,9 +387,6 @@ def main(arch, gendir, outdir, dynamic_g
+     file_path = os.path.join(source, source_file)
+     if not os.path.isfile(file_path):
+       source_exists = False
+-      if sys.platform != 'win32':
+-        print('File %s needs to be generated from Windows first' % file_path)
+-        return 1
+ 
+       # Either this is a brand new IDL file that does not have outputs under
+       # third_party\win_build_output\midl or the file is (unexpectedly) missing.
+@@ -371,6 +395,9 @@ def main(arch, gendir, outdir, dynamic_g
+       # instruct the developer to copy that file under
+       # third_party\win_build_output\midl.
+       open(file_path, 'wb').close()
++    elif os.path.getsize(file_path) == 0:
++      # Regenerate empty files
++      source_exists = False
+     shutil.copy(file_path, outdir)
+ 
+   if dynamic_guids != 'none':
+@@ -401,10 +428,6 @@ def main(arch, gendir, outdir, dynamic_g
+   else:
+     dynamic_guids = None
+ 
+-  # On non-Windows, that's all we can do.
+-  if sys.platform != 'win32':
+-    return 0
+-
+   idl_template = None
+   if dynamic_guids:
+     idl_template = idl

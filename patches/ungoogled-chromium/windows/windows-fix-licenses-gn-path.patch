@@ -1,8 +1,21 @@
 --- a/tools/licenses/licenses.py
 +++ b/tools/licenses/licenses.py
-@@ -810,7 +810,7 @@ def _GnBinary():
+@@ -808,10 +808,20 @@ def _GnBinary():
+   exe = 'gn'
+   if sys.platform.startswith('linux'):
+     subdir = 'linux64'
++    if os.path.exists(exe):
++      return './' + exe
++    if 'GN' in os.environ:
++      return os.environ['GN']
++    return exe  # find in PATH
    elif sys.platform == 'darwin':
      subdir = 'mac'
++    if os.path.exists(exe):
++      return './' + exe
++    if 'GN' in os.environ:
++      return os.environ['GN']
++    return exe  # find in PATH
    elif sys.platform == 'win32':
 -    subdir, exe = 'win', 'gn.exe'
 +    subdir, exe = os.path.join('..', 'out', 'Release', 'gn_build'), 'gn.exe'

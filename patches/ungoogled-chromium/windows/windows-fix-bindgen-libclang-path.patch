@@ -1,0 +1,26 @@
+In the Linux cross build, libclang is under clang_base_path, not
+rust_bindgen_root. Without this fix, bindgen breaks thusly:
+
+  thread 'main' panicked at .../registry/src/index.crates.io-6f17d22bba15001f/bindgen-0.70.1/lib.rs:622:27:
+  Unable to find libclang: "couldn't find any valid shared libraries matching: ['libclang.so', 'libclang-*.so', 'libclang.so.*', 'libclang-*.so.*'], set the `LIBCLANG_PATH` environment variable to a path where one of these files can be found (invalid: [])"
+
+--- a/build/rust/rust_bindgen.gni
++++ b/build/rust/rust_bindgen.gni
+@@ -23,6 +23,7 @@ _libclang_path = rust_bindgen_root
+ if (host_os == "win") {
+   _libclang_path += "/bin"
+ } else {
++  _libclang_path = clang_base_path
+   _libclang_path += "/lib"
+ }
+ 
+--- a/build/rust/rust_bindgen_generator.gni
++++ b/build/rust/rust_bindgen_generator.gni
+@@ -22,6 +22,7 @@ _libclang_path = clang_base_path
+ if (host_os == "win") {
+   _libclang_path += "/bin"
+ } else {
++  _libclang_path = clang_base_path
+   _libclang_path += "/lib"
+ }
+ 

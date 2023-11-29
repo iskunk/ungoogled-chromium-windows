@@ -1,0 +1,35 @@
+# Dockerfile.base
+
+FROM ubuntu:noble
+
+LABEL org.opencontainers.image.description="Base image for building chromium-win-cross"
+
+ARG APT_MIRROR=mirrors.wikimedia.org
+ARG BUILD_UID=1024
+ARG MULTI_ARCH=
+
+ADD ccache.conf    /etc/
+ADD gh-unburden.sh /usr/local/sbin/gh-unburden
+ADD rootfs-sums.sh /usr/local/sbin/rootfs-sums
+ADD rc.cc          /usr/local/src/
+
+ADD llvm /opt/llvm
+
+ADD node /opt/node
+
+ADD rust /opt/rust
+
+# Most setup is performed in this script
+RUN --mount=type=bind,source=base-setup.sh,target=/tmp/base-setup.sh \
+	sh /tmp/base-setup.sh
+
+# Prevents "error: the option `Z` is only accepted on the nightly compiler"
+ENV RUSTC_BOOTSTRAP=1
+
+WORKDIR /home/build
+USER build
+
+# Avoid .pyc files as they don't help reproducibility
+ENV PYTHONDONTWRITEBYTECODE=y
+
+# end Dockerfile.base

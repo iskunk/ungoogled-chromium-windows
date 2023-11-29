@@ -13,19 +13,21 @@
    ]
 --- a/chrome/tools/build/win/create_installer_archive.py
 +++ b/chrome/tools/build/win/create_installer_archive.py
-@@ -224,12 +224,14 @@ def GenerateDiffPatch(options, orig_file
- 
+@@ -225,11 +225,19 @@
  
  def GetLZMAExec(build_dir):
--    executable = '7za'
--    if sys.platform == 'win32':
--        executable += '.exe'
-+    # Taken from ungoogled-chromium's _extraction.py file, modified for Python 2
-+    import winreg
-+    sub_key_7zfm = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\7zFM.exe'
+     executable = '7za'
++    if sys.platform != 'win32':
++        return executable  # find in PATH
+     if sys.platform == 'win32':
+         executable += '.exe'
  
 -    return os.path.join(build_dir, "..", "..", "third_party", "lzma_sdk", "bin",
 -                        "host_platform", executable)
++    # Taken from ungoogled-chromium's _extraction.py file, modified for Python 2
++    import winreg
++    sub_key_7zfm = 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\7zFM.exe'
++
 +    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, sub_key_7zfm) as key_handle:
 +        sevenzipfm_dir = winreg.QueryValueEx(key_handle, 'Path')[0]
 +

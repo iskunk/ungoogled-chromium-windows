@@ -1,5 +1,7 @@
+ungoogled-chromium/windows/windows-use-system-tools.patch
 ungoogled-chromium/windows/windows-disable-reorder-fix-linking.patch
 ungoogled-chromium/windows/windows-disable-win-build-output.patch
+ungoogled-chromium/windows/windows-run-midl-via-wine.patch
 ungoogled-chromium/windows/windows-disable-rcpy.patch
 ungoogled-chromium/windows/windows-fix-building-gn.patch
 ungoogled-chromium/windows/windows-disable-encryption.patch
@@ -21,3 +23,4 @@ ungoogled-chromium/windows/windows-fix-licenses-gn-path.patch
 ungoogled-chromium/windows/windows-fix-building-with-rust.patch
 ungoogled-chromium/windows/windows-fix-remove-unused-preferences-fields.patch
 ungoogled-chromium/windows/windows-fix-missing-includes.patch
+ungoogled-chromium/windows/windows-fix-bindgen-libclang-path.patch
