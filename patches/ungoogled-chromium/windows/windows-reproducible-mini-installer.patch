@@ -1,0 +1,24 @@
+--- a/chrome/tools/build/win/create_installer_archive.py
++++ b/chrome/tools/build/win/create_installer_archive.py
+@@ -433,6 +433,12 @@ def PrepareSetupExec(options, current_ve
+         CompressUsingLZMA(options.build_dir, setup_file_path, patch_file,
+                           options.verbose, options.fast_archive_compression)
+     else:
++        setup_file_path = os.path.join(options.build_dir, SETUP_EXEC)
++        # The timestamp of the setup file gets baked into makecab's output,
++        # so if build_time is specified, apply it here too.
++        if options.build_time:
++            timestamp = int(options.build_time)
++            os.utime(setup_file_path, (timestamp, timestamp))
+         # Use makecab.py instead of makecab.exe so that this works when building
+         # on non-Windows hosts too.
+         makecab_py = os.path.join(os.path.dirname(__file__), 'makecab.py')
+@@ -444,7 +450,7 @@ def PrepareSetupExec(options, current_ve
+             '/V1',
+             '/L',
+             options.output_dir,
+-            os.path.join(options.build_dir, SETUP_EXEC),
++            setup_file_path,
+         ]
+         RunSystemCommand(cmd, options.verbose)
+         setup_file = SETUP_EXEC[:-1] + "_"

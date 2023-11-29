@@ -1,0 +1,82 @@
+# Dockerfile.base
+
+FROM ubuntu:noble
+
+LABEL org.opencontainers.image.description="Base image for building chromium-win-cross"
+
+ARG APT_MIRROR=mirrors.wikimedia.org
+RUN test "_${APT_MIRROR}" = _NONE || perl -pi \
+    -e 's!deb.debian.org!<APT>!;' \
+    -e 's!archive.ubuntu.com/ubuntu!<APT>/ubuntu!;' \
+    -e 's!security.ubuntu.com/ubuntu!<APT>/ubuntu-security! if 0;' \
+    -e "s!<APT>!$APT_MIRROR!;" \
+    -e '/ \w+-(backports|security) / and s/^/#!#/' \
+    /etc/apt/sources.list.d/*.sources \
+    /etc/apt/sources.list
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
+	7zip \
+	bubblewrap \
+	ccache \
+	git \
+	less \
+	nano \
+	netcat-openbsd \
+	procps \
+	python3 \
+	python3-httplib2 \
+	quilt \
+	rsync \
+	time \
+	wget \
+	wine wine64 \
+	xz-utils
+
+ADD requirements.txt /tmp
+RUN DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install \
+	$(grep -v '^#' /tmp/requirements.txt)
+
+# Additional packages needed for x86 (32-bit) builds
+RUN pkg=$(dpkg-query --show libstdc++-\*-dev \
+	  | sed 's/[\x09:].*/-i386-cross/' | grep .) && set -x && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install $pkg
+
+ADD rust /opt/rust
+
+# Prevents "error: the option `Z` is only accepted on the nightly compiler"
+ENV RUSTC_BOOTSTRAP=1
+
+ADD rc.cc /opt/google/src/
+RUN mkdir /opt/google/bin && \
+    /usr/bin/clang++-[1-9]* -std=c++14 -Wall -Wno-c++11-narrowing \
+	/opt/google/src/rc.cc -o /opt/google/bin/rc
+
+ADD rootfs-sums.sh /usr/local/sbin/rootfs-sums
+
+ARG BUILD_UID=1024
+RUN useradd \
+	--uid ${BUILD_UID} \
+	--gid users \
+	--no-user-group \
+	--comment 'Build User' \
+	--create-home \
+	--key HOME_MODE=0755 \
+	--shell /bin/bash \
+	build
+
+# Zap unreproducible files
+RUN rm -f /var/cache/ldconfig/aux-cache && \
+    cd /var/log && for file in \
+	alternatives.log \
+	apt/history.log \
+	apt/term.log \
+	dpkg.log ; \
+    do \
+	echo UNREPRODUCIBLE_FILE > $file; \
+    done
+
+WORKDIR /home/build
+USER build
+
+# end Dockerfile.base

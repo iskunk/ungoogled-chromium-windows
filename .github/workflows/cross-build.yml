@@ -1,0 +1,95 @@
+name: Cross-build ungoogled-chromium
+
+on:
+  workflow_dispatch:
+    inputs:
+      container_image:
+        description: "Build in container image"
+        default: chromium-win-cross:latest
+
+jobs:
+
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: 50
+          fetch-tags: true
+
+      - name: Get Chromium version info
+        id: chromium
+        run: |
+          version=$(cat ungoogled-chromium/chromium_version.txt)
+          echo "Chromium version: $version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Restore Chromium source tarball download cache
+        id: restore-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: chromium-source-${{steps.chromium.outputs.version}}
+          path: cross-build/build/download_cache
+
+      - name: Download and/or verify Chromium source tarball
+        run: |
+          cache=cross-build/build/download_cache
+          mkdir -p $cache
+          ungoogled-chromium/utils/downloads.py retrieve \
+            --ini ungoogled-chromium/downloads.ini \
+            --cache $cache
+          ls -l $cache
+
+      - name: Save Chromium source tarball download cache
+        if: ${{!steps.restore-cache.outputs.cache-hit}}
+        uses: actions/cache/save@v4
+        with:
+          key: chromium-source-${{steps.chromium.outputs.version}}
+          path: cross-build/build/download_cache
+
+      - name: Free up some disk space on the runner
+        run: |
+          echo Before:
+          df -m .
+          sudo rm -rf \
+            /usr/local/.ghcup \
+            /usr/local/lib/android \
+            /usr/local/share/powershell \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            "$AGENT_TOOLSDIRECTORY"
+          echo After:
+          df -m .
+
+      - name: Download cross-build container
+        run: |
+          echo ${{secrets.GITHUB_TOKEN}} | docker login ghcr.io --username ${{github.actor}} --password-stdin
+          docker pull ghcr.io/${{github.repository_owner}}/${{inputs.container_image}}
+          docker logout ghcr.io
+
+      - name: Run build inside container
+        run: |
+          docker container run --rm \
+            --name=chromium-win-cross-con \
+            --hostname=chromium-win-cross-con \
+            --volume $PWD:/home/build/u-c-w \
+            ghcr.io/${{github.repository_owner}}/${{github.event.inputs.container_image}} \
+            sh -c 'cd u-c-w/cross-build && ./build.sh --ci'
+
+      - name: Archive build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          compression-level: 0
+          path: cross-build/build/ungoogled-chromium_*
+
+      - name: Archive reproducibility info
+        uses: actions/upload-artifact@v4
+        with:
+          name: reproduce
+          compression-level: 9
+          path: cross-build/build/MD5SUMS.repro
+
+# EOF

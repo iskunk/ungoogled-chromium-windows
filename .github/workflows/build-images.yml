@@ -1,0 +1,109 @@
+name: Build container images for cross build
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        type: boolean
+        description: "Upload to registry"
+        default: false
+
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    permissions:
+      # needed to upload container images
+      packages: write
+    env:
+      # used in cross-build/Makefile
+      APT_MIRROR: azure.archive.ubuntu.com
+      IMAGE_SOURCE: https://github.com/${{github.repository}}
+    steps:
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+
+      - name: Clone msvc-wine Git repository
+        uses: actions/checkout@v4
+        with:
+          repository: mstorsjo/msvc-wine
+          ref: 209623ed118aac0121e63a7e86e467c238516f5a # 20240912
+          path: cross-build/msvc-wine
+
+      - name: Tweak Dpkg config to elide progress indicators
+        run: echo 'Dpkg::Use-Pty "false";' | sudo tee /etc/apt/apt.conf.d/55no-use-pty
+
+      - name: Build base container image
+        run: cd cross-build && make build-image-base BUILD_UID=$(id -u)
+
+      - name: Install packages required for extracting the MSVC files
+        run: sudo apt-get -y --no-install-recommends install msitools
+
+      - name: Restore MSVC download cache
+        id: restore-msvc
+        uses: actions/cache/restore@v4
+        with:
+          key: msvc-download
+          path: cross-build/msvc-cache
+
+      - name: Build MSVC container image
+        run: |
+          cd cross-build && make build-image \
+            MSVC_ACCEPT_LICENSE=--accept-license
+
+      - name: Save MSVC download cache
+        if: ${{!steps.restore-msvc.outputs.cache-hit}}
+        uses: actions/cache/save@v4
+        with:
+          key: msvc-download
+          path: cross-build/msvc-cache
+
+      - name: Get date-based version tag for images
+        id: version
+        run: |
+          vtag=$(date '+%Y%m%d')
+          echo "Image version tag: $vtag"
+          echo "tag=$vtag" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        if: inputs.upload
+        run: echo ${{secrets.GITHUB_TOKEN}} | docker login ghcr.io --username ${{github.actor}} --password-stdin
+
+      - name: Upload base container image to registry
+        if: inputs.upload
+        run: |
+          remote_name=ghcr.io/${{github.repository_owner}}/chromium-win-cross-base
+          set -x
+          docker tag chromium-win-cross-base $remote_name:${{steps.version.outputs.tag}}
+          docker tag chromium-win-cross-base $remote_name:latest
+          docker push $remote_name:${{steps.version.outputs.tag}}
+          docker push $remote_name:latest
+
+      - name: Upload MSVC container image to registry
+        if: inputs.upload
+        run: |
+          remote_name=ghcr.io/${{github.repository_owner}}/chromium-win-cross
+          set -x
+          docker tag chromium-win-cross $remote_name:${{steps.version.outputs.tag}}
+          docker tag chromium-win-cross $remote_name:latest
+          docker push $remote_name:${{steps.version.outputs.tag}}
+          docker push $remote_name:latest
+          docker logout ghcr.io
+
+      - name: Prepare image metadata
+        run: |
+          mkdir artifact
+          set -x
+          cp -p cross-build/MD5SUMS.rootfs artifact/
+          cp -p cross-build/winsysroot/.vsdownload/MD5SUMS.cache artifact/MD5SUMS.msvc-cache
+          cp -p cross-build/winsysroot/.vsdownload/*.manifest.xz artifact/
+          xz -d artifact/*.xz
+          docker container run --rm chromium-win-cross dpkg-query --show > artifact/dpkg-packages.txt
+
+      - name: Archive image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info
+          compression-level: 9
+          path: artifact/
+
+# EOF

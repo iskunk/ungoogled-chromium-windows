@@ -1,0 +1,110 @@
+System tools to use (instead of Google-provided binaries) when
+cross-compiling on Linux
+
+--- a/build/toolchain/win/midl.gni
++++ b/build/toolchain/win/midl.gni
+@@ -159,6 +159,14 @@ template("midl") {
+       assert(false, "Need environment for this arch")
+     }
+ 
++    if (host_os == "win") {
++      clang = rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang-cl.exe",
++                          root_build_dir)
++    } else {
++      import("//build/config/clang/clang.gni")
++      clang = "${clang_base_path}/bin/clang-cl"
++    }
++
+     args = [
+       win_tool_arch,
+       generated_dir,
+@@ -169,8 +177,7 @@ template("midl") {
+       dlldata_file,
+       interface_identifier_file,
+       proxy_file,
+-      rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang-cl.exe",
+-                  root_build_dir),
++      clang,
+       "{{source}}",
+       "/char",
+       "signed",
+--- a/build/toolchain/win/rc/rc.py
++++ b/build/toolchain/win/rc/rc.py
+@@ -125,6 +125,10 @@ def Preprocess(rc_file_data, flags):
+   """Runs the input file through the preprocessor."""
+   clang = os.path.join(SRC_DIR, 'third_party', 'llvm-build',
+                        'Release+Asserts', 'bin', 'clang-cl')
++  if sys.platform == 'linux':
++    import glob
++    # Use system clang-cl
++    clang = glob.glob('/usr/lib/llvm-[1-9]*/bin/clang-cl')[0]
+   # Let preprocessor write to a temp file so that it doesn't interfere
+   # with /showIncludes output on stdout.
+   if sys.platform == 'win32':
+--- a/chrome/credential_provider/build/make_setup.py
++++ b/chrome/credential_provider/build/make_setup.py
+@@ -61,6 +61,8 @@ def GetLZMAExec(src_path):
+   executable = '7zr'
+   if sys.platform == 'win32':
+     executable += '.exe'
++  if sys.platform == 'linux':
++    return executable  # use system 7zip
+ 
+   return os.path.join(src_path, 'third_party', 'lzma_sdk', 'bin',
+                       'host_platform', executable)
+--- a/chrome/tools/build/win/create_installer_archive.py
++++ b/chrome/tools/build/win/create_installer_archive.py
+@@ -227,6 +227,8 @@ def GetLZMAExec(build_dir):
+     executable = '7za'
+     if sys.platform == 'win32':
+         executable += '.exe'
++    if sys.platform == 'linux':
++        return executable  # use system 7zip
+ 
+     return os.path.join(build_dir, "..", "..", "third_party", "lzma_sdk", "bin",
+                         "host_platform", executable)
+--- a/chrome/updater/win/installer/create_installer_archive.py
++++ b/chrome/updater/win/installer/create_installer_archive.py
+@@ -96,6 +96,8 @@ def GetLZMAExec(build_dir):
+     executable = '7za'
+     if sys.platform == 'win32':
+         executable += '.exe'
++    if sys.platform == 'linux':
++        return executable  # use system 7zip
+ 
+     return os.path.join(build_dir, "..", "..", "third_party", "lzma_sdk",
+                         "bin", "host_platform", executable)
+--- a/third_party/node/node.py
++++ b/third_party/node/node.py
+@@ -11,6 +11,8 @@ import os
+ 
+ 
+ def GetBinaryPath():
++  if sys.platform == 'linux':
++    return 'node'  # use system Node.js
+   if platform.machine() == 'arm64':
+     darwin_path = 'mac_arm64'
+     darwin_name = 'node-darwin-arm64'
+--- a/tools/licenses/licenses.py
++++ b/tools/licenses/licenses.py
+@@ -809,6 +809,7 @@ def FindThirdPartyDirs(root, extra_third
+ def _GnBinary():
+   exe = 'gn'
+   if sys.platform.startswith('linux'):
++    return exe  # use system GN
+     subdir = 'linux64'
+   elif sys.platform == 'darwin':
+     subdir = 'mac'
+--- a/tools/resources/generate_resource_allowlist.py
++++ b/tools/resources/generate_resource_allowlist.py
+@@ -26,6 +26,10 @@ import ar
+ llvm_bindir = os.path.join(os.path.dirname(sys.argv[0]), '..', '..',
+                            'third_party', 'llvm-build', 'Release+Asserts',
+                            'bin')
++if sys.platform == 'linux':
++  import glob
++  # Use system LLVM
++  llvm_bindir = glob.glob('/usr/lib/llvm-[1-9]*/bin')[0]
+ 
+ 
+ def ExtractAllowlistFromFile(path, resource_ids):

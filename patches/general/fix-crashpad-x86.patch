@@ -1,0 +1,20 @@
+Fix the following errors observed in an x86 (32-bit) build:
+
+  third_party/crashpad/crashpad/snapshot/x86/cpuid_reader.cc(116,3): error: always_inline function '_fxsave' requires target feature 'fxsr', but would be inlined into function 'SupportsDAZ' that is compiled without support for 'fxsr'
+    116 |   _fxsave(&fxsave);
+        |   ^
+
+  third_party/crashpad/crashpad/snapshot/win/system_snapshot_win.cc(438,3): error: always_inline function '_fxsave' requires target feature 'fxsr', but would be inlined into function 'CPUX86SupportsDAZ' that is compiled without support for 'fxsr'
+    438 |   _fxsave(&extended_registers);
+        |   ^
+
+--- a/build/config/win/BUILD.gn
++++ b/build/config/win/BUILD.gn
+@@ -127,6 +127,7 @@ config("compiler") {
+     # next step after SSE2 will be AVX.
+     if (current_cpu == "x86" || current_cpu == "x64") {
+       cflags += [ "-msse3" ]
++      cflags += [ "-mfxsr" ]
+     }
+ 
+     # Enable ANSI escape codes if something emulating them is around (cmd.exe

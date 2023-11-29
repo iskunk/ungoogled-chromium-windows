@@ -1,0 +1,12 @@
+Custom (non-system) tools to use when cross-compiling on Linux
+
+--- a/build/toolchain/win/rc/rc.py
++++ b/build/toolchain/win/rc/rc.py
+@@ -168,6 +168,7 @@ def Preprocess(rc_file_data, flags):
+ def RunRc(preprocessed_output, is_utf8, flags):
+   if sys.platform.startswith('linux'):
+     rc = os.path.join(THIS_DIR, 'linux64', 'rc')
++    rc = '/opt/google/bin/rc'  # use our build
+   elif sys.platform == 'darwin':
+     rc = os.path.join(THIS_DIR, 'mac', 'rc')
+   elif sys.platform == 'win32':

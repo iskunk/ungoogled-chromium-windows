@@ -1,11 +1,17 @@
+#general/clang-17-compatibility.patch
+general/cross-build-use-system-tools.patch
+general/cross-build-use-custom-tools.patch
+general/fix-crashpad-x86.patch
 inox-patchset/fix-cfi-failures-with-unbundled-libxml.patch
 ungoogled-chromium/windows/windows-disable-reorder-fix-linking.patch
 ungoogled-chromium/windows/windows-disable-win-build-output.patch
+ungoogled-chromium/windows/windows-run-midl-via-wine.patch
 ungoogled-chromium/windows/windows-disable-rcpy.patch
 ungoogled-chromium/windows/windows-fix-building-gn.patch
 ungoogled-chromium/windows/windows-disable-encryption.patch
 ungoogled-chromium/windows/windows-disable-machine-id.patch
 ungoogled-chromium/windows/windows-compile-mini-installer.patch
+ungoogled-chromium/windows/windows-reproducible-mini-installer.patch
 ungoogled-chromium/windows/windows-no-unknown-warnings.patch
 ungoogled-chromium/windows/windows-fix-showIncludes.patch
 ungoogled-chromium/windows/windows-fix-rc.patch

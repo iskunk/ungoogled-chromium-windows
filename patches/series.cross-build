@@ -1,0 +1,4 @@
+cross-build/debian-gn-funcs.patch
+cross-build/debian-gn-absl.patch
+cross-build/bindgen-libclang-path.patch
+cross-build/warning-fixes.patch
