@@ -1,0 +1,60 @@
+name: Cross-build ungoogled-chromium
+
+on: workflow_dispatch
+
+jobs:
+
+  main:
+    runs-on: ubuntu-latest
+    outputs:
+      leader-address: ${{steps.leader_info.outputs.address}}
+      leader-ssh-hkey: ${{steps.leader_info.outputs.ssh_hkey}}
+    steps:
+      - id: leader_info
+        run: |
+          ip route list default | perl -ne '/\bdev (\w+)/ and print "address=$1\n"' >> $GITHUB_OUTPUT
+          echo "ssh_hkey=$(cat /etc/ssh/ssh_host_ed25519_key.pub)" >> $GITHUB_OUTPUT
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: 50
+          fetch-tags: true
+      - name: Get Chromium version info
+        id: version
+        run: echo "chromium=$(cat ungoogled-chromium-windows/ungoogled-chromium/chromium_version.txt)" >> $GITHUB_OUTPUT
+      - name: Restore Chromium source tarball download cache
+        uses: actions/cache/restore@v3
+        with:
+          key: chromium-source-${{steps.version.outputs.chromium}}
+          path: cross-build/build/download_cache
+      - name: Download Chromium source tarball
+        run: |
+          u_c=ungoogled-chromium-windows/ungoogled-chromium
+          $u_c/utils/download.py retrieve \
+            --ini $u_c/downloads.ini \
+            --cache cross-build/build/download_cache
+      - name: Save Chromium source tarball download cache
+        uses: actions/cache/save@v3
+        with:
+          key: chromium-source-${{steps.version.outputs.chromium}}
+      - name: Cross-build Chromium for Windows from Linux
+        run: |
+          docker container run -it --rm \
+            --name=chromium-win-cross-con \
+            --hostname=chromium-win-cross-con \
+            --volume $PWD:u-c-windows \
+            ghcr.io/${{github.repository_owner}}/chromium-win-cross:latest
+            'cd cross-build && ./build.sh --tarball'
+      - name: Archive build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          compression-level: 9
+          path: cross-build/build/ungoogled-chromium_*
+
+
+
+
+
+# EOF

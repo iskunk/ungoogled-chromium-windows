@@ -1,0 +1,41 @@
+name: "Build image: chromium-win-cross-base"
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        type: boolean
+        description: "Upload to registry"
+        default: false
+
+jobs:
+
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
+      - name: Build container image
+        run: |
+          cd cross-build && make build-image-base \
+            APT_MIRROR=azure.archive.ubuntu.com \
+            BUILD_UID=$(id -u) \
+            IMAGE_SOURCE=https://github.com/${{github.repository}}
+      - name: Get date-based version tag for image
+        id: version
+        if: inputs.upload
+        run: |
+          vtag=$(date '+%Y%m%d')
+          echo "Image version tag: $vtag"
+          echo "tag=$vtag" >> $GITHUB_OUTPUT
+      - name: Upload container image to registry
+        if: inputs.upload
+        run: |
+          echo ${{secrets.GHCR_TOKEN}} | docker login ghcr.io --username ${{github.actor}} --password-stdin
+          remote_name=ghcr.io/${{github.repository_owner}}/chromium-win-cross-base
+          docker tag chromium-win-cross-base $remote_name:${{steps.version.outputs.tag}}
+          docker push $remote_name:${{steps.version.outputs.tag}}
+          docker tag chromium-win-cross-base $remote_name:latest
+          docker push $remote_name:latest
+
+# EOF
