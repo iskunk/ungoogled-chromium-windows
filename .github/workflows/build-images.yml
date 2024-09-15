@@ -1,0 +1,23 @@
+name: Build container images for cross-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        type: boolean
+        description: "Upload to registry"
+        default: false
+
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    permissions:
+      # needed to upload container images
+      packages: write
+    env:
+      # used in cross-build/Makefile
+      APT_MIRROR: azure.archive.ubuntu.com
+      IMAGE_SOURCE: https://github.com/${{github.repository}}
+    steps:
+      - name: Clone u-c-w Git repository
+        uses: actions/checkout@v4
